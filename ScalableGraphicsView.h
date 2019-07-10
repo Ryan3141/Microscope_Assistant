@@ -22,15 +22,19 @@ public:
 
 	int _zoom;
 	QGraphicsScene* _scene;
-	QPixmap* _photo;
+	QPixmap _photo;
 	QGraphicsPixmapItem* _photo_handle;
 
 private:
+	bool needs_initial_setup = true;
 	virtual void mouseMoveEvent( QMouseEvent * event );
 	virtual void mousePressEvent( QMouseEvent* event );
 	//virtual void mouseReleaseEvent( QMouseEvent* event );
 	virtual void wheelEvent( QWheelEvent* event );
 	cv::Mat _stored_image;
+	cv::Mat temp_color_convert;
+	unsigned char* image_buffer;
+
 
 	//bool _pan;
 	//int _panStartX, _panStartY;

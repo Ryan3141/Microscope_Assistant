@@ -71,7 +71,7 @@ ScalableGraphicsView::ScalableGraphicsView( QWidget *parent )
 {
 	this->_zoom = 0;
 	this->_scene = new QGraphicsScene( this );
-	this->_photo = nullptr;// new QGraphicsPixmap();
+	//this->_photo = nullptr;// new QGraphicsPixmap();
 	this->_photo_handle = nullptr;
 	//this->_scene->addItem( this->_photo );
 	this->setScene( this->_scene );
@@ -82,6 +82,9 @@ ScalableGraphicsView::ScalableGraphicsView( QWidget *parent )
 	this->setHorizontalScrollBarPolicy( Qt::ScrollBarPolicy::ScrollBarAlwaysOff );
 	this->setBackgroundBrush( QBrush( QColor( 30, 30, 30 ) ) );
 	this->setFrameShape( QFrame::NoFrame );
+
+	image_buffer = nullptr;
+	//this->temp_color_convert.create( 1080, 1980, CV_8UC3 );
 }
 
 ScalableGraphicsView::~ScalableGraphicsView()
@@ -91,8 +94,9 @@ ScalableGraphicsView::~ScalableGraphicsView()
 
 void ScalableGraphicsView::resizeEvent( QResizeEvent* event )
 {
-	if( this->_photo != nullptr && this->_zoom == 0 )
-		fitInView( 0, 0, this->_photo->size().width(), this->_photo->size().height(), Qt::KeepAspectRatio );
+	//if( this->_photo != nullptr && this->_zoom == 0 )
+	if( !this->_photo.isNull() && this->_zoom == 0 )
+		fitInView( 0, 0, this->_photo.size().width(), this->_photo.size().height(), Qt::KeepAspectRatio );
 
 	QGraphicsView::resizeEvent( event );
 }
@@ -100,19 +104,17 @@ void ScalableGraphicsView::resizeEvent( QResizeEvent* event )
 void ScalableGraphicsView::setPicture( const std::string & file_name )
 {
 	this->_zoom = 0;
-	if( this->_photo != nullptr )
+	if( this->_photo_handle != nullptr )
 	{
 		this->_scene->removeItem( this->_photo_handle );
 		this->_photo_handle = nullptr;
-		this->_photo = nullptr;
-		delete this->_photo;
 	}
 
-	this->_photo = new QPixmap( file_name.c_str() );
+	this->_photo.load( file_name.c_str() );
 
-	if( this->_photo != nullptr && !this->_photo->isNull() )
+	if( !this->_photo.isNull() )
 	{
-		this->_photo_handle = this->_scene->addPixmap( *this->_photo );
+		this->_photo_handle = this->_scene->addPixmap( this->_photo );
 		this->setDragMode( QGraphicsView::DragMode::ScrollHandDrag );
 		this->fitImageInView();
 	}
@@ -121,37 +123,66 @@ void ScalableGraphicsView::setPicture( const std::string & file_name )
 		this->setDragMode( QGraphicsView::DragMode::NoDrag );
 	}
 }
+#include "opencv2/cudaarithm.hpp"
+#include "opencv2/cudafeatures2d.hpp"
+#include "opencv2/cudaimgproc.hpp"
+#include "opencv2/core/cuda.hpp"
 
 void ScalableGraphicsView::setPicture( const Mat & image )
 {
+	if( image.data == nullptr )
+		return;
 	//this->_stored_image = image;
 	//image.copyTo( this->_stored_image );
-	if( this->_photo != nullptr )
+	if( this->_photo_handle != nullptr )
 	{
 		this->_scene->removeItem( this->_photo_handle );
+		delete this->_photo_handle;
 		this->_photo_handle = nullptr;
-		this->_photo = nullptr;
-		delete this->_photo;
 	}
 
-	this->_zoom = 0;
-	if( this->_photo != nullptr )
-		delete this->_photo;
-	Mat & dest = this->_stored_image;
-	cvtColor( image, dest, CV_BGRA2RGB );
-	QImage q_image( (uchar*)dest.data, dest.cols, dest.rows, dest.step, QImage::Format_RGB888 );
-	int debug2 = 1;
-	QPixmap::fromImage( q_image );
-	new QPixmap( QPixmap::fromImage( q_image ) );
-	this->_photo = new QPixmap( QPixmap::fromImage( q_image ) );
-	auto debug = this->_photo->isNull();
+	//Mat & dest = this->_stored_image;
+	//cvtColor( image, dest, CV_BGRA2RGB );
+	//Mat & dest = this->temp_color_convert;
+	Mat dest = image;
+	//Mat dest;// = image.clone();
+	//cv::cuda::GpuMat gpu_image;
+	//gpu_image.upload( image );
+	////cv::cuda::GpuMat bgr_image;
+	////bgr_image.create( 1080, 1980, CV_8UC3 );
+	//cv::cuda::cvtColor( gpu_image, gpu_image, CV_BGR2RGB );
+	//gpu_image.download( dest );
+	//cvtColor( image, dest, CV_BGR2RGBA );
+	this->_photo = QPixmap(); // Get rid of old pixmap which referenced memory in _stored_image
+	this->_stored_image = image; // _stored_image holds a reference count to keep the data alive for the pixmap
+	//uchar* rawPtr = new uchar[ dest.step * dest.rows ];
+	//if( image_buffer == nullptr )
+	//	image_buffer = new uchar[ dest.step * dest.rows ];
 
-	if( this->_photo != nullptr && !this->_photo->isNull() )
+	//memcpy( image_buffer, (uchar*)dest.data, dest.step * dest.rows );
+	QImage q_image( this->_stored_image.data, dest.cols, dest.rows, dest.step, QImage::Format_RGB32 );
+	//QImage q_image( rawPtr, dest.cols, dest.rows, int( dest.step ), QImage::Format_RGB32, []( void* allocated ) { delete[] allocated; }, rawPtr );
+	//QImage q_image( (uchar*)dest.data, dest.cols, dest.rows, int( dest.step ), QImage::Format_ARGB32, []( void* allocated ) { delete[] allocated; }, rawPtr );
+	//QImage q_image( (uchar*)dest.data, dest.cols, dest.rows, dest.step, QImage::Format_RGBA8888 );
+	//int debug2 = 1;
+	//QPixmap::fromImage( q_image );
+	//new QPixmap( QPixmap::fromImage( q_image ) );
+	//this->_photo = new QPixmap( QPixmap::fromImage( q_image ) );
+	this->_photo = QPixmap::fromImage( std::move(q_image) );
+	//this->_photo.loadFromData( (uchar*)dest.data, );
+	auto debug = this->_photo.isNull();
+
+	if( !this->_photo.isNull() )
 	{
-		this->_photo_handle = this->_scene->addPixmap( *this->_photo );
+		needs_initial_setup = false;
+		this->_photo_handle = this->_scene->addPixmap( this->_photo );
 		this->setDragMode( QGraphicsView::DragMode::ScrollHandDrag );
-		this->fitImageInView();
 		setSceneRect( this->_scene->itemsBoundingRect() );
+		if( needs_initial_setup )
+		{
+			this->_zoom = 0;
+			this->fitImageInView();
+		}
 	}
 	else
 	{
@@ -161,7 +192,7 @@ void ScalableGraphicsView::setPicture( const Mat & image )
 
 void ScalableGraphicsView::fitImageInView()
 {
-	QRectF rect( this->_photo->rect() );
+	QRectF rect( this->_photo.rect() );
 	if( rect.isNull() )
 		return;
 
@@ -241,11 +272,11 @@ void ScalableGraphicsView::wheelEvent( QWheelEvent* event )
 	int debug = event->delta();
 	auto change2 = event->angleDelta();
 
-	if( this->_photo == nullptr || this->_photo->isNull() )
+	if( this->_photo.isNull() )
 		return;
 
 	double change = 1.0;
-	if( event->delta() > 0 )
+	if( event->angleDelta().y() > 0 )
 	{
 		change = 1.25;
 		this->_zoom++;
