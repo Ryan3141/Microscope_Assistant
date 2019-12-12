@@ -30,4 +30,5 @@ private:
 	qint64 old_time;
 	qint64 time_sum = 0;
 	int sum_counter = 0;
+	const int pixels_per_mm = 3562;
 };

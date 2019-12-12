@@ -1,7 +1,10 @@
 #include "Camera_Interface.h"
 
 #include <QTimer>
+#include <QDateTime>
+#include <QDebug>
 #include "opencv2/imgcodecs.hpp"
+#include <opencv2/core.hpp>
 
 using namespace cv;
 
@@ -16,7 +19,7 @@ Camera_Interface::~Camera_Interface()
 
 void Camera_Interface::Start_Thread()
 {
-	Start_Camera( 1920, 1080 );
+	Start_Camera( default_x_resolution, default_y_resolution );
 
 	// Create timer to continuously run loop, but run other events between calls
 	QTimer* camera_loop_timer = new QTimer( this );
@@ -30,12 +33,14 @@ void Camera_Interface::Start_Camera( int resolution_x, int resolution_y )
 	//capture_device.open( 1 ); // open the default camera
 	//capture_device.open( 1, cv::CAP_DSHOW ); // open the default camera
 	capture_device.open( 0, cv::CAP_MSMF ); // open the default camera
+	//capture_device.open( 0, cv::CAP_DSHOW ); // open the default camera
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'm', 'j', 'p', '2' ) );
+	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'Y', 'U', 'Y', '2' ) );
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'M', 'J', 'P', 'G' ) );
 	//const int MODE_HW = 1;
 	//const int CV_CAP_PROP_MODE = 9;
 	//capture_device.set( CV_CAP_PROP_MODE, MODE_HW );
-	capture_device.set( CAP_PROP_FPS, 60 );
+	//capture_device.set( CAP_PROP_FPS, 60 );
 	//capture_device.set( CAP_PROP_FORMAT, CV_8UC3 );
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'H', '2', '6', '4' ) );
 	//capture_device.set( CAP_PROP_FRAME_WIDTH, 640 );
@@ -54,16 +59,29 @@ void Camera_Interface::Start_Camera( int resolution_x, int resolution_y )
 void Camera_Interface::Read_Camera_Loop()
 {
 	std::lock_guard<std::mutex> guard( image_mutex[ image_index ] );
+	qint64 before_time = QDateTime::currentMSecsSinceEpoch();
 	try
 	{
 		capture_device >> current_image[ image_index ];
+		sum_counter++;
 	}
 	catch( ... )
 	{
 		QThread::msleep( 100 );
-		Start_Camera( 1920, 1080 );
+		Start_Camera( default_x_resolution, default_y_resolution );
 	}
 	image_index = (image_index + 1) % NUMBER_OF_BUFFER_IMAGES;
+	qint64 after_time = QDateTime::currentMSecsSinceEpoch();
+	time_sum += after_time - before_time;
+
+	if( sum_counter >= 30 )
+	{
+		double fps = 1000.0 * sum_counter / time_sum;
+		qDebug() << "Framerate from camera: " << fps << "\n";
+		time_sum = 0;
+		sum_counter = 0;
+	}
+
 	//static int test_index = 0;
 	//if( test_index > 30 )
 	//{
@@ -86,20 +104,17 @@ void Camera_Interface::Take_Image()
 {
 	QString file_name = "test.jpg";
 	std::lock_guard<std::mutex> guard( image_mutex[ image_index ] );
-	printf( "start" );
 	bool success = false;
+	qint64 before_time = QDateTime::currentMSecsSinceEpoch();
 	while( success == false )
 	{
 		try
 		{
-			capture_device.open( 1, cv::CAP_DSHOW ); // open the default camera
-			QThread::msleep( 10 );
-			Start_Camera( 4224, 3156 );
+			//Start_Camera( picture_x_resolution, picture_x_resolution );
+			//QThread::msleep( 10 );
 			capture_device >> current_image[ image_index ];
-			QThread::msleep( 10 );
-			capture_device.open( 1, cv::CAP_DSHOW ); // open the default camera
-			QThread::msleep( 10 );
-			Start_Camera( 4224, 3156 );
+			//Start_Camera( default_x_resolution, default_y_resolution );
+			//QThread::msleep( 10 );
 			//Start_Camera( 1920, 1080 );
 			cv::imwrite( file_name.toStdString(), current_image[ image_index ] );
 			success = true;
@@ -107,13 +122,15 @@ void Camera_Interface::Take_Image()
 		catch(...)
 		{
 			QThread::msleep( 100 );
+			Start_Camera( default_x_resolution, default_y_resolution );
 		}
 	}
 	image_index = (image_index + 1) % 2;
-	printf( "end" );
+	qint64 after_time = QDateTime::currentMSecsSinceEpoch();
+	qDebug() << "Picture took " << 1E-3 * (after_time - before_time) << "seconds\n";
 }
 
-Mat Camera_Interface::Get_Image()
+pcv::RGB_UChar_Image Camera_Interface::Get_Image()
 {
 	//Mat result;
 	//QMetaObject::invokeMethod( this, [ this ]

@@ -68,7 +68,7 @@ void Microscope_Assistant::Main_Loop()
 		if( sum_counter >= 30 )
 		{
 			double fps = 1000.0 * sum_counter / time_sum;
-			qDebug() << fps << "\n";
+			//qDebug() << "Framerate to display: " << fps << "\n";
 			time_sum = 0;
 			sum_counter = 0;
 		}

@@ -10,6 +10,7 @@
 
 #include "opencv2/superres.hpp"
 #include "opencv2/superres/optical_flow.hpp"
+#include "Pleasant_OpenCV.h"
 
 class Camera_Interface;
 
@@ -44,7 +45,7 @@ signals:
 private:
 	void Stitch_Loop();
 	void GPU_Stitch_Loop();
-	cv::Mat current_image;
+	pcv::RGB_UChar_Image current_image;
 	cv::Mat Overall_Image;
 	cv::Ptr<cv::ORB> detector;
 	cv::Ptr<cv::BFMatcher> matcher;

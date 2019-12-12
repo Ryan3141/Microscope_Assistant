@@ -174,7 +174,6 @@ void ScalableGraphicsView::setPicture( const Mat & image )
 
 	if( !this->_photo.isNull() )
 	{
-		needs_initial_setup = false;
 		this->_photo_handle = this->_scene->addPixmap( this->_photo );
 		this->setDragMode( QGraphicsView::DragMode::ScrollHandDrag );
 		setSceneRect( this->_scene->itemsBoundingRect() );
@@ -182,6 +181,7 @@ void ScalableGraphicsView::setPicture( const Mat & image )
 		{
 			this->_zoom = 0;
 			this->fitImageInView();
+			needs_initial_setup = false;
 		}
 	}
 	else

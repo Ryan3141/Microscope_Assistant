@@ -21,6 +21,8 @@
 #include "opencv2/cudaarithm.hpp"
 #include "opencv2/cudafeatures2d.hpp"
 
+#include "Pleasant_OpenCV.h"
+
 #include "Camera_Interface.h"
 
 //#include "opencv2/stitching.hpp"
@@ -46,9 +48,15 @@ void Live_Stitcher::Start_Thread()
 	// Create timer to continuously run loop, but run other events between calls
 	this->detector = cv::ORB::create();
 	this->matcher = cv::BFMatcher::create( cv::NORM_HAMMING, true );
-	this->gpu_detector = cuda::ORB::create();
-	this->gpu_matcher = cuda::DescriptorMatcher::createBFMatcher( cv::NORM_HAMMING );
-
+	try
+	{
+		//this->gpu_detector = cuda::ORB::create();
+		this->gpu_matcher = cuda::DescriptorMatcher::createBFMatcher( cv::NORM_HAMMING );
+	}
+	catch( ... )
+	{
+		printf( "Cuda not supported\n" );
+	}
 	this->frame_passthrough = Ptr<FramePassthrough>( new FramePassthrough() );
 
 	const int scale = 2;// cmd.get<int>( "scale" );
@@ -75,9 +83,84 @@ void Live_Stitcher::Start_Thread()
 
 void Live_Stitcher::Stitch_Loop()
 {
+	this->current_image = camera->Get_Image();
+	if( this->current_image.empty() )
+		return;
+
+	const pcv::RGB_UChar_Image & img = this->current_image;
+	pcv::Gray_UChar_Image img_grayscale;
+	//img_grayscale.create(img.size(), CV_8UC1);
+	pcv::cvtColor<COLOR_RGB2GRAY>( img, img_grayscale );
+	pcv::Gray_Float_Image grayscale;
+	//grayscale.create( img.size(), CV_64F );
+	pcv::Change_Data_Type( img_grayscale, grayscale );
+	//cv::cvtColor( this->current_image, laplacian_img_bw, COLOR_BGR2GRAY );
+	//cv::Laplacian( laplacian_img_bw, laplacian_img, CV_64F, 3 );
+	pcv::Gray_Float_Image laplacian_img;
+	//laplacian_img.create( img.size(), CV_64F );
+	pcv::Laplacian( grayscale, laplacian_img, 7 );
+	//pcv::multiply( laplacian_img, laplacian_img, laplacian_img, 1.0 );
+	pcv::Gray_UChar_Image to_be_displayed_gray;
+	//to_be_displayed_gray.create( img.size(), CV_8UC1 );
+	pcv::Change_Data_Type( laplacian_img, to_be_displayed_gray );
+	pcv::RGBA_UChar_Image to_be_displayed;
+	//to_be_displayed.create( img.size(), CV_8UC4 );
+	pcv::cvtColor<COLOR_GRAY2RGBA>( to_be_displayed_gray, to_be_displayed );
+	emit Display_Image( to_be_displayed );
+	return;
+	constexpr int erosion_size = 1;
+	Mat dilation_kernel = getStructuringElement( cv::MORPH_ELLIPSE,
+										 Size( 2 * erosion_size + 1, 2 * erosion_size + 1 ),
+										 Point( erosion_size, erosion_size ) );
+	cv::normalize( laplacian_img, laplacian_img, 0, 255.0, NORM_MINMAX );
+
+	int threshold_value = 180;
+	int max_BINARY_value = 0;
+	//cv::threshold( laplacian_img, laplacian_img, threshold_value, max_BINARY_value, cv::THRESH_TOZERO );
+	//cv::dilate( laplacian_img, laplacian_img, dilation_kernel );
+	//cv::GaussianBlur( laplacian_img, laplacian_img, Size( erosion_size, erosion_size ), 5.0, 5.0 );
+
+
+	//cv::equalizeHist( laplacian_img_bw, laplacian_img_bw ); // Only works on 8-bit data
+
+	Mat laplacian_img_color;
+	//cv::cvtColor( laplacian_img_bw, laplacian_img_color, COLOR_GRAY2BGR, CV_32SC4 );
+	//imshow( "Test", laplacian_img );
+	double* stupid_shit = (double*)laplacian_img.data + 8000;
+	//laplacian_img.convertTo( laplacian_img, CV_8U );
+	//for( int j = 0; j < 10; j++ )
+	//{
+	//	for( int i = 0; i < 10; i++ )
+	//	{
+	//		std::cout << int(laplacian_img.at<unsigned char>( i, j )) << " ";
+	//	}
+	//	std::cout << std::endl;
+	//}
+	unsigned char* fucking_thing = (unsigned char*)laplacian_img.data;
+	Mat prepared_img( laplacian_img.size(), CV_8UC1 );// = laplacian_img.clone();
+	Mat prepared_img2( laplacian_img.size(), CV_8UC4 );// = laplacian_img.clone();
+	double min_val, max_val;
+	cv::minMaxIdx( laplacian_img, &min_val, &max_val );
+	laplacian_img.convertTo( prepared_img, CV_8UC1, 1.0 );
+	cv::equalizeHist( prepared_img, prepared_img ); // Only works on 8-bit data
+	//cv::erode( prepared_img, prepared_img, dilation_kernel );
+	//cv::dilate( prepared_img, prepared_img, dilation_kernel );
+	cv::medianBlur( prepared_img, prepared_img, 5 );
+	//cv::dilate( prepared_img, prepared_img, dilation_kernel );
+	double min_val2, max_val2;
+	cv::minMaxIdx( prepared_img, &min_val2, &max_val2 );
+	cv::cvtColor( prepared_img, prepared_img2, COLOR_GRAY2BGRA );
+	//cv::normalize( prepared_img2, prepared_img2, 0, 255.0, NORM_MINMAX );
+
+	//auto test = prepared_img.at<char>( 0, 0, 0 );
+	//prepared_img.convertTo( prepared_img, CV_8UC3 );
+	//imshow( "Test", prepared_img );
+	//imshow( "test", prepared_img2 );
+	emit Display_Image( prepared_img2 );
+	return;
 	//static int test_here = 0;
 	//if( test_here++ < 10 )
-		return;
+		//return;
 	this->current_image = camera->Get_Image();
 	if( this->current_image.empty() )
 		return;
@@ -236,10 +319,10 @@ void Live_Stitcher::Stitch_Loop()
 
 					found_a_likely_decomposition = true;
 				}
-
+				Mat test;
+				test.type();
 				if( !found_a_likely_decomposition )
 					return;
-
 				//-- Get the corners from the image_1 ( the object to be "detected" )
 				std::vector<Point2f> obj_corners( 4 );
 				obj_corners[ 0 ] = cv::Point( 0, 0 ); obj_corners[ 1 ] = cv::Point( new_image.cols, 0 );
