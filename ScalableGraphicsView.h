@@ -6,6 +6,7 @@
 #include <QGraphicsView>
 
 #include <opencv2/core.hpp>
+#include "Pleasant_OpenCV.h"
 
 class ScalableGraphicsView : public QGraphicsView
 {
@@ -17,7 +18,7 @@ public:
 	virtual void resizeEvent( QResizeEvent* event );
 
 	void setPicture( const std::string & file_name );
-	void setPicture( const cv::Mat & image );
+	void setPicture( const pcv::RGBA_UChar_Image & image );
 	void fitImageInView();
 
 	int _zoom;

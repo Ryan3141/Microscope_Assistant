@@ -32,7 +32,12 @@ void Camera_Interface::Start_Camera( int resolution_x, int resolution_y )
 	//capture_device.open( 0 ); // open the default camera
 	//capture_device.open( 1 ); // open the default camera
 	//capture_device.open( 1, cv::CAP_DSHOW ); // open the default camera
+#ifdef DEBUGGING_ON_LAPPYTOP
+	//capture_device.open( 0, cv::CAP_MSMF ); // open the default camera
+	capture_device.open( 1, cv::CAP_MSMF ); // open the default camera
+#else
 	capture_device.open( 0, cv::CAP_MSMF ); // open the default camera
+#endif
 	//capture_device.open( 0, cv::CAP_DSHOW ); // open the default camera
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'm', 'j', 'p', '2' ) );
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'Y', 'U', 'Y', '2' ) );
@@ -43,27 +48,50 @@ void Camera_Interface::Start_Camera( int resolution_x, int resolution_y )
 	//capture_device.set( CAP_PROP_FPS, 60 );
 	//capture_device.set( CAP_PROP_FORMAT, CV_8UC3 );
 	//capture_device.set( CAP_PROP_FOURCC, cv::VideoWriter::fourcc( 'H', '2', '6', '4' ) );
-	//capture_device.set( CAP_PROP_FRAME_WIDTH, 640 );
-	//capture_device.set( CAP_PROP_FRAME_HEIGHT, 480 );
-	//capture_device.set( CAP_PROP_FRAME_WIDTH, 1280 );
-	//capture_device.set( CAP_PROP_FRAME_HEIGHT, 720 );
 	capture_device.set( CAP_PROP_FRAME_WIDTH, resolution_x );
 	capture_device.set( CAP_PROP_FRAME_HEIGHT, resolution_y );
 	//capture_device.set( CAP_PROP_CONVERT_RGB, 0 );
-	//capture_device.set( CAP_PROP_FRAME_WIDTH, 3840 );
-	//capture_device.set( CAP_PROP_FRAME_HEIGHT, 2160 );
-	//capture_device.set( CAP_PROP_FRAME_WIDTH, 4224 );
-	//capture_device.set( CAP_PROP_FRAME_HEIGHT, 3156 );
 }
 
 void Camera_Interface::Read_Camera_Loop()
 {
 	std::lock_guard<std::mutex> guard( image_mutex[ image_index ] );
 	qint64 before_time = QDateTime::currentMSecsSinceEpoch();
+	if( false )
+	{
+		static bool done_once = false;
+		static QString path = R"(D:\School\Processing\Microscope_Computer\Microscope Images\Ryan\SED\PR For Etch\)";
+		static QStringList file_names;
+		if( !done_once )
+		{
+			for( int i = 1; i <= 25; i++ )
+				file_names.push_back( QString( "476-4 (%1).jpg" ).arg( i ) );
+			pcv::RGBA_UChar_Image loaded_img;
+			pcv::Convert<COLOR_RGB2RGBA>( pcv::RGB_UChar_Image( cv::imread( (path + file_names[ 0 ]).toStdString() ) ), loaded_img );
+			for( auto & image : current_image )
+				image = loaded_img;
+			done_once = true;
+		}
+		static int counter = 0;
+		if( counter++ >= 10 )
+		{
+			int index = (counter / 10) % 21;
+			pcv::RGBA_UChar_Image loaded_img;
+			pcv::Convert<COLOR_RGB2RGBA>( pcv::RGB_UChar_Image( cv::imread( (path + file_names[ index ]).toStdString() ) ), loaded_img );
+			for( auto & image : current_image )
+				image = loaded_img;
+		}
+	}
 	try
 	{
-		capture_device >> current_image[ image_index ];
-		sum_counter++;
+		//QThread::msleep( 100 );
+		Mat possible_new_frame;
+		capture_device >> possible_new_frame;
+		if( possible_new_frame.data != nullptr )
+		{
+			current_image[ image_index ] = possible_new_frame;
+			sum_counter++;
+		}
 	}
 	catch( ... )
 	{
@@ -77,7 +105,7 @@ void Camera_Interface::Read_Camera_Loop()
 	if( sum_counter >= 30 )
 	{
 		double fps = 1000.0 * sum_counter / time_sum;
-		qDebug() << "Framerate from camera: " << fps << "\n";
+		qDebug() << "Framerate from camera: " << fps;// << "\n";
 		time_sum = 0;
 		sum_counter = 0;
 	}
@@ -130,7 +158,7 @@ void Camera_Interface::Take_Image()
 	qDebug() << "Picture took " << 1E-3 * (after_time - before_time) << "seconds\n";
 }
 
-pcv::RGB_UChar_Image Camera_Interface::Get_Image()
+pcv::RGBA_UChar_Image Camera_Interface::Get_Image()
 {
 	//Mat result;
 	//QMetaObject::invokeMethod( this, [ this ]
